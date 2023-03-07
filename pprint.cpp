@@ -4,7 +4,10 @@
 void print_ast(AstP a, int indent) {
     switch(a->t) {
     case Type::Var:    // type variables, X
-        std::cout << a->name;
+        std::cout << ":" << a->n;
+        break;
+    case Type::var:     // variables, x
+        std::cout << a->n;
         break;
     case Type::Top:    // largest type
         std::cout << "Top";
@@ -23,9 +26,6 @@ void print_ast(AstP a, int indent) {
         break;
     case Type::Group:  // grouping, {A}
         std::cout << "Group";
-        break;
-    case Type::var:     // variables, x
-        std::cout << a->name;
         break;
     case Type::top:     // member of Top
         std::cout << "top";

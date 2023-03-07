@@ -5,6 +5,8 @@
 // SFold
 struct GetAst {
     AstP ast;
+    Stack *parent;
+    GetAst(Stack *_parent) : parent(_parent) { }
 
     // Type annotations are ignored.
     bool val(Stack *s) {
@@ -12,11 +14,7 @@ struct GetAst {
         switch(s->t) {
         case Type::Var:
         case Type::var: // re-number variable ref-s
-            //if(number_var(s, s->ref)) {
-            //    return true;
-            //}
-            //TODO: renumber using a map
-            ast->name = s->ref->name;
+            ast->isPtr = s->number_var(&ast->n, s->ref, parent);
             break;
         case Type::error:
             ast->name = s->err;
@@ -47,6 +45,10 @@ struct GetAst {
         }
     }
 
+    /** Turn a sub-tree into an Ast.  This retains
+     *  the same parent stack as before, so the sub-tree
+     *  remains locally nameless with no change in scoping.
+     */
     AstP get_ast_sub(Stack *s) {
         AstP a = ast;
         unwind(this, s);
@@ -55,8 +57,13 @@ struct GetAst {
     }
 };
 
+/** Create a "locally nameless" Ast for the given stack.
+ *  Varibles defined within the stack are replaced by de-Bruijn
+ *  indices.  Variables external to the stack are left as
+ *  pointers to Bind-s.
+ */
 AstP get_ast(Stack *s) {
-    struct GetAst h;
+    struct GetAst h(s->parent);
     unwind(&h, s);
     return h.ast;
 }

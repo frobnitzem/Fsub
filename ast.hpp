@@ -19,18 +19,31 @@ enum class Type {
     error
 };
 
+
+// We use pointers to struct Bind to implement locally nameless
+// Ast-s, which are short-lived intermediate data structures.
+struct Bind;
+
 struct Ast;
 
 using AstP = std::shared_ptr<Ast>;
 
 struct Ast {
     Type t;
-    std::string name; // defined for named variables
+    bool isPtr = false; // whether ref() is active [true] or n [false]
+    std::string name; // informational only - for named variables
+    intptr_t n = -1;  // de-Bruijn index for variables
+    Bind *ref() {
+        return reinterpret_cast<Bind *>(n);
+    }
+
     AstP child[2];
     Ast(Type _t)                : t(_t), child{nullptr,nullptr} {}
     Ast(Type _t, AstP c0)         : t(_t), child{c0,nullptr} {}
     Ast(Type _t, AstP c0, AstP c1) : t(_t), child{c0,c1} {}
 
+    Ast(Type _t, const int _n)
+                          : t(_t), n(_n), child{nullptr,nullptr} {}
     Ast(Type _t, const std::string& _name)
                           : t(_t), name(_name), child{nullptr,nullptr} {}
     Ast(Type _t, const std::string& _name,
@@ -41,6 +54,12 @@ struct Ast {
 
 inline AstP Var(const std::string& name) {
     return std::make_shared<Ast>(Type::Var, name);
+}
+inline AstP var(const std::string& name) {
+    return std::make_shared<Ast>(Type::var, name);
+}
+inline AstP Var(int n) {
+    return std::make_shared<Ast>(Type::Var, n);
 }
 inline AstP Top() {
     return std::make_shared<Ast>(Type::Top);
@@ -60,8 +79,8 @@ inline AstP fn(const std::string& name, AstP A, AstP b) {
 inline AstP fnT(const std::string& name, AstP A, AstP b) {
     return std::make_shared<Ast>(Type::fnT, name, A, b);
 }
-inline AstP var(const std::string& name) {
-    return std::make_shared<Ast>(Type::var, name);
+inline AstP var(int n) {
+    return std::make_shared<Ast>(Type::var, n);
 }
 inline AstP app(AstP a, AstP b) {
     return std::make_shared<Ast>(Type::app, a, b);
@@ -85,6 +104,12 @@ inline AstP error(const std::string& name) {
     appT,    // type application, b(:A)
     group    // grouping, {a}
 */
+
+// Does this term represent a binding construct?
+static constexpr bool isBind(Type t) {
+    return t == Type::Fn || t == Type::ForAll || t == Type::fn
+           || t == Type::fnT;
+}
 
 // Does this term represent a type?
 static constexpr bool isType(Type t) {
@@ -120,7 +145,7 @@ struct NChild {
         };
 };
 
-static constexpr int nchild(Type t) {
+static constexpr int getNChild(Type t) {
     return NChild::n[(int)t];
 }
 void print_ast(AstP a, int indent=0);

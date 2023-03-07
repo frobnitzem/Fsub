@@ -10,6 +10,23 @@ AstP pair(AstP A, AstP B) {
     return ForAll("C", Top(), Fn(Fn(A, Fn(B, C)), C));
 }
 
+void process(AstP a) {
+    numberAst(a);
+    Stack *s = new Stack(nullptr, a, false);
+
+    std::cout << "Initial: ";
+    print_ast(a, 0); std::cout << std::endl;
+
+    std::cout << "Stack:   ";
+    print_ast(get_ast(s), 0); std::cout << std::endl;
+
+    //eval_need(s);
+    //std::cout << "Eval-d:  ";
+    //print_ast(get_ast(s), 0); std::cout << std::endl;
+
+    stack_dtor(s);
+}
+
 int main(int argc, char *argv[]) {
     AstP T = Top();
     AstP X = Var("X");
@@ -50,19 +67,7 @@ int main(int argc, char *argv[]) {
                         app(appT(p, B), fn("a",A,fn("b",B,b)))
                    )));
 
-    Stack *s_snd = new Stack(nullptr, snd, false);
-
-    std::cout << "Initial: ";
-    print_ast(snd, 0); std::cout << std::endl;
-
-    std::cout << "Stack:   ";
-    print_ast(get_ast(s_snd), 0); std::cout << std::endl;
-
-    eval_need(s_snd);
-    std::cout << "Eval-d:  ";
-    print_ast(get_ast(s_snd), 0); std::cout << std::endl;
-
-    stack_dtor(s_snd);
-
+    process(snd);
     return 0;
 }
+

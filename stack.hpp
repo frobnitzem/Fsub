@@ -75,7 +75,9 @@ struct Stack {
     // Creation of a stack "winds up" the Ast.
     Stack(Stack *parent, AstP a, bool isT, Stack *next=nullptr);
     // Used during construction of the stack from an Ast.
-    Bind *lookup(const std::string &name, bool incr=true);
+    Bind *lookup(int n, bool initial=false);
+    Bind *outer_ctxt() const;
+    bool number_var(intptr_t *n, Bind *ref, Stack *parent) const;
     // Used to wind an Ast onto the head term of the stack.
     bool wind(AstP a, bool isT);
 
@@ -102,4 +104,6 @@ void unwind(SFold *f, struct Stack *s) {
         cn = c->next;
         f->bind(c); // ascend binder
     }
-}
+} 
+
+void numberAst(AstP x, Bind *assoc = nullptr);
