@@ -106,4 +106,4 @@ void unwind(SFold *f, struct Stack *s) {
     }
 } 
 
-void numberAst(AstP x, Bind *assoc = nullptr);
+void numberAst(AstP *x, Bind *assoc = nullptr);

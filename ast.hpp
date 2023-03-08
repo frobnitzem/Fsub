@@ -88,6 +88,12 @@ inline AstP app(AstP a, AstP b) {
 inline AstP appT(AstP a, AstP B) {
     return std::make_shared<Ast>(Type::appT, a, B);
 }
+inline AstP group(const std::string& name, AstP a, AstP b) {
+    return std::make_shared<Ast>(Type::group, name, a, b);
+}
+inline AstP Group(const std::string& name, AstP a, AstP b) {
+    return std::make_shared<Ast>(Type::Group, name, a, b);
+}
 inline AstP error(const std::string& name) {
     return std::make_shared<Ast>(Type::error, name);
 }
@@ -134,14 +140,14 @@ struct NChild {
         0,//Top,     // largest type
         2,//Fn,      // function spaces, A->B
         2,//ForAll,  // bounded quantification, All(X<:A) B
-        1,//Group,   // grouping, {A}
+        2,//Group,   // grouping, {A}
         0,//var,     // variables, x
         0,//top,     // member of Top
         2,//fn,      // functions, fn(x:A) b
         2,//app,     // application, b(a)
         2,//fnT,     // polymorphic function, fn(X<:A)b
         2,//appT,    // type application, b(:A)
-        1 //group    // grouping, {a}
+        2 //group    // grouping, {a}
         };
 };
 

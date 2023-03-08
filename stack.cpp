@@ -14,34 +14,46 @@ static int lookup1(const std::string &name, Bind *assoc) {
     return -1;
 };
 
-// Traverse x and number all named Var-s in-place
+// Traverse x and number all named Var-s.
+// Replaces x with a numbered Ast.
+//
 // We use a hacked Bind chain here to track binding depth
 // but a linked-list with names would work just as well.
-void numberAst(AstP x, Bind *assoc) {
+void numberAst(AstP *x, Bind *assoc) {
     Bind *const first = assoc;
     while(true) {
-        if(x->t == Type::Var || x->t == Type::var) {
-            x->n = lookup1(x->name, assoc);
-            if(x->n < 0) {
-                x->t = Type::error;
-                x->name = std::string("Undefined variable " + x->name);
+        AstP y = std::make_shared<Ast>((*x)->t);
+        if((*x)->t == Type::Group || (*x)->t == Type::group) {
+            y->name = (*x)->name;
+        }
+        if((*x)->t == Type::Var || (*x)->t == Type::var) {
+            y->n = lookup1((*x)->name, assoc);
+            if(y->n < 0) {
+                y->t = Type::error;
+                y->name = std::string("Undefined variable " + (*x)->name);
             }
+            *x = y;
             break;
         }
 
-        // Handle all other cases by generic recursion over first
-        // nchild-1 binders.
-        int nchild = getNChild(x->t);
-        if(nchild == 0) break;
+        // Handle all other cases.
+        int nchild = getNChild((*x)->t);
+        if(nchild == 0) break; // retain old Ast
+        for(int i=0; i<nchild; ++i) {
+            y->child[i] = (*x)->child[i];
+        }
+
+        // Generic recursion over first nchild-1 binders.
         for(int i=0; i<nchild-1; ++i) {
-            numberAst(x->child[i], assoc);
+            numberAst(&y->child[i], assoc);
         }
         // The last child of a binding contains the binding.
-        if(isBind(x->t)) {
-            assoc = new Bind(assoc, x->t, x->name, nullptr, nullptr);
+        if(isBind((*x)->t)) {
+            assoc = new Bind(assoc, (*x)->t, (*x)->name, nullptr, nullptr);
         }
         // continue the while loop on the last child
-        x = x->child[nchild-1];
+        *x = y;
+        x = &y->child[nchild-1];
     }
     // GC by deleting (assoc -> ... ->) first
     Bind *c;
@@ -100,6 +112,10 @@ bool cur_bind(Stack const *&s, Bind const *&c) {
 bool cur_bind(Stack *&s, Bind *&c, bool initial=false) {
     while(c == nullptr && s != nullptr) {
         if(initial) {
+            if(s->parent == nullptr) {
+                c = nullptr;
+                break;
+            }
             c = s->parent->ctxt;
         } else {
             c = s->outer_ctxt();
@@ -183,7 +199,11 @@ bool Stack::wind(AstP a, bool isT) {
                 ref = lookup(a->n, true);
             }
             if(ref == nullptr) {
-                set_error(std::string("Unbound variable, ") + a->name);
+                if(a->name.size() > 0) {
+                    set_error(std::string("Unbound variable, ") + a->name);
+                } else {
+                    set_error("Unbound variable.");
+                }
                 return true;
             } else {
                 ++ref->nref;
