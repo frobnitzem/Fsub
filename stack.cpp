@@ -208,12 +208,18 @@ bool Stack::wind(AstP a, bool isT) {
             } else {
                 ++ref->nref;
             }
-            if(a->t == Type::var && isType(ref->t)) {
+            if(a->t == Type::Var && !bindType(ref->t)) {
+                set_error("RHS of Var is not a type.");
+                return true;
+            }
+            if(a->t == Type::var && bindType(ref->t)) {
                 set_error("RHS of var is a type.");
                 return true;
             }
             break;
         case Type::Top:    // largest type
+            break;
+        case Type::top:     // member of Top
             break;
         case Type::Fn: {   // function spaces, A->B
             Stack *rhs = app;
@@ -229,7 +235,7 @@ bool Stack::wind(AstP a, bool isT) {
         case Type::ForAll: {  // bounded quantification, All(X<:A) B
             Stack *rhs = app;
             if(rhs != nullptr) {
-                set_error("Invalid application of type (A->B).");
+                set_error("Invalid application of type All(X:<A) B.");
                 return true;
             }
             ctxt = new Bind(ctxt, Type::ForAll, a->name,
@@ -237,11 +243,6 @@ bool Stack::wind(AstP a, bool isT) {
             a = a->child[1];
             continue;
             }
-        case Type::Group:  // grouping, {A}
-            set_error("Group not handled.");
-            break;
-        case Type::top:     // member of Top
-            break;
         case Type::fn: {    // functions, fn(x:A) b
             Stack *rhs = app;
             if(app != nullptr) {
@@ -252,10 +253,6 @@ bool Stack::wind(AstP a, bool isT) {
             a = a->child[1];
             continue;
             }
-        case Type::app:     // application, b(a)
-            app = new Stack(this, a->child[1], false, app);
-            a = a->child[0];
-            continue;
         case Type::fnT: {   // polymorphic function, fn(X<:A)b
             Stack *rhs = app;
             if(app != nullptr) {
@@ -266,10 +263,17 @@ bool Stack::wind(AstP a, bool isT) {
             a = a->child[1];
             continue;
             }
+        case Type::app:     // application, b(a)
+            app = new Stack(this, a->child[1], false, app);
+            a = a->child[0];
+            continue;
         case Type::appT:          // type application, b(:A)
             app = new Stack(this, a->child[1], true, app);
             a = a->child[0];
             continue;
+        case Type::Group:  // grouping, {A}
+            set_error("Group not handled.");
+            break;
         case Type::group:         // grouping, {a}
             set_error("Group not handled.");
             return true;

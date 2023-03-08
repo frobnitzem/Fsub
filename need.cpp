@@ -28,6 +28,7 @@ struct EvalNeed {
         if(ref->rhs == nullptr)
             return true;
         eval_need(ref->rhs);
+
         AstP rhs = get_ast(ref->rhs); // locally nameless Ast
         --ref->nref;
         return s->wind(rhs, bindType(ref->t));

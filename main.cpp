@@ -5,7 +5,7 @@
 
 #include "wind.hpp"
 
-AstP pair(AstP A, AstP B) {
+AstP Pair(AstP A, AstP B) {
     AstP C = Var("C");
     return ForAll("C", Top(), Fn(Fn(A, Fn(B, C)), C));
 }
@@ -50,25 +50,37 @@ int main(int argc, char *argv[]) {
     g = group("ff", fnT("X", T, fn("x",T,fn("y",X,y))), g);
     g = group("cond", fnT("X", T, fn("b",Bool,appT(var("b"),X))), g);
 
-    AstP P = pair(A, B);
-    /*AstP pairT = ForAll("A", T, ForAll("B", T, Fn(A, Fn(B, pair(A,B)))));
-    AstP fstT  = ForAll("A", T, ForAll("B", T, Fn(P, A)));
-    AstP sndT  = ForAll("A", T, ForAll("B", T, Fn(P, B)));*/
-    g = group("pair", fnT("A", T, fnT("B", T, fn("a", A, fn("b", B,
+    AstP P = Pair(A, B);
+    AstP pair = fnT("A", T, fnT("B", T, fn("a", A, fn("b", B,
                             fnT("C", T,
                                 fn("p", Fn(A, Fn(B, C)),
                                         app(app(p, a), b)))
-                            )))), g);
+                            ))));
+    /*AstP pairT = ForAll("A", T, ForAll("B", T, Fn(A, Fn(B, pair(A,B)))));
+    AstP fstT  = ForAll("A", T, ForAll("B", T, Fn(P, A)));
+    AstP sndT  = ForAll("A", T, ForAll("B", T, Fn(P, B)));*/
+    g = group("pair", pair, g);
     g = group("fst", fnT("A", T, fnT("B", T, fn("p", P,
                         app(appT(p, A), fn("a",A,fn("b",B,a)))
                    ))), g);
     g = group("snd", fnT("A", T, fnT("B", T, fn("p", P,
                         app(appT(p, B), fn("a",A,fn("b",B,b)))
                    ))), g);
+    AstP once = fnT("A",T,fn("f", Fn(A, A),
+                                fn("x",A, app(var("f"),x) )));
+    g = group("once", once, g);
+    AstP twice = fnT("A",T,fn("f", Fn(A, A),
+                           fn("x", A,
+                               app(var("f"), app(var("f"), x))) ));
+    // TODO: improve error message for:
+                               //app(app(var("f"), x), x)) ));
+    g = group("twice", twice, g);
+    g = group("id1x", app(app(appT(once,Id), appT(id,Id)), id), g);
+    g = group("id2x", app(app(appT(twice,Id), appT(id,Id)), id), g);
+
     numberAst(&g);
     std::cout << "Initial = ";
     print_ast(g, 0); std::cout << std::endl;
-
 
     for(; g->t == Type::group || g->t == Type::Group; g=g->child[1]) {
         printf("%s:\n", g->name.c_str());
@@ -76,4 +88,3 @@ int main(int argc, char *argv[]) {
     }
     return 0;
 }
-

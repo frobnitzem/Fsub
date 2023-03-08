@@ -130,7 +130,8 @@ static constexpr bool isValue(Type t) {
 
 // Should the right-hand side value of this binder be a type?
 static constexpr bool bindType(Type t) {
-    return t == Type::fnT;
+    return t == Type::fnT || t == Type::ForAll || t == Type::Fn
+                || t == Type::Group;
 }
 
 struct NChild {
