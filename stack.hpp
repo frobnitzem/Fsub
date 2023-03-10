@@ -80,6 +80,7 @@ struct Stack {
     bool number_var(intptr_t *n, Bind *ref, Stack *parent) const;
     // Used to wind an Ast onto the head term of the stack.
     bool wind(AstP a, bool isT);
+    bool windType(AstP a);
 
     void set_error(const std::string &msg) {
         err = msg;
