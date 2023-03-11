@@ -31,7 +31,12 @@ struct EvalNeed {
 
         AstP rhs = get_ast(ref->rhs); // locally nameless Ast
         --ref->nref;
-        return s->wind(rhs, bindType(ref->t));
+        if(bindType(ref->t)) {
+            s->windType(rhs);
+            return true;
+        }
+        s->wind(rhs);
+        return s->isTrivial();
     }
 
     // calc_state --

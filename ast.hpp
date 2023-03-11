@@ -3,6 +3,15 @@
 #include <string>
 #include <memory>
 
+// We use pointers to struct Bind to implement locally nameless
+// Ast-s, which are short-lived intermediate data structures.
+struct Bind;
+
+struct Ast;
+using AstP = std::shared_ptr<Ast>;
+
+#include "error.hpp"
+
 enum class Type {
     Var=1,   // type variables, X
     Top,     // largest type
@@ -19,14 +28,6 @@ enum class Type {
     error
 };
 
-
-// We use pointers to struct Bind to implement locally nameless
-// Ast-s, which are short-lived intermediate data structures.
-struct Bind;
-
-struct Ast;
-
-using AstP = std::shared_ptr<Ast>;
 
 struct Ast {
     Type t;
@@ -155,4 +156,9 @@ struct NChild {
 static constexpr int getNChild(Type t) {
     return NChild::n[(int)t];
 }
+
+// pprint.cpp
 void print_ast(AstP a, int indent=0);
+
+// type.cpp
+TracebackP subType(AstP A, AstP B);

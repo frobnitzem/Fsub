@@ -138,7 +138,7 @@ bool cur_bind(Stack *&s, Bind *&c, bool initial=false) {
  *        is the total number of binders up to the
  *        root of the term.
  */
-bool Stack::number_var(intptr_t *nv, Bind *ref, Stack *parent) const {
+bool Stack::number_var(intptr_t *nv, Bind *ref, const Stack *parent) const {
     const Stack *s = this;
     const Bind *c = s->ctxt;
     int n = 0;
@@ -184,190 +184,267 @@ Bind *Stack::lookup(int n, bool initial) {
     return c;
 }
 
-Stack::Stack(Stack *_p, AstP a, bool isT, Stack *_next)
-        : parent(_p), ctxt(nullptr),
-          app(nullptr), next(_next) {
-    wind(a, isT);
+/** Lookup the variable binding in the stack,
+ *  and set s->ref to the corresponding Bind
+ *  expression.  Note this does not increment
+ *  the refcount, so do that on your own
+ *  if you are creating a refernce to this binder.
+ *
+ *  On failure, sets s to an error message
+ *  and returns false.
+ *
+ *  Returns true on success.
+ */
+bool Stack::deref(AstP a, bool initial) {
+    if(a->isPtr) {
+        ref = a->ref();
+    } else {
+        ref = lookup(a->n, initial);
+    }
+    if(ref == nullptr) {
+        if(a->name.size() > 0) {
+            set_error(std::string("Unbound variable, ") + a->name);
+        } else {
+            set_error("Unbound variable.");
+        }
+        return false;
+    }
+    return true;
 }
 
-/** TODO: Take another Stack *t arg to fill in
- *  the term's type.
- */
-bool Stack::wind(AstP a, bool isT) {
+Stack::Stack(Stack *_p, AstP a, bool isT, Stack *_next)
+        : parent(_p), ctxt(nullptr), app(nullptr), next(_next) {
     if(isT) {
-        bool ok = windType(a);
-        //if(!ok) { // Discovered an error in stack.
-        //}
-        return true;
+        windType(a);
+    } else {
+        wind(a);
     }
-    while(true) {
+}
+
+struct windStack {
+    bool err = false;
+    Stack *s;
+    windStack(Stack *_s) : s(_s) {}
+
+    AstP val(AstP a) {
+        s->t = a->t;
         switch(a->t) {
-        case Type::var:     // variables, x
-            if(a->isPtr) {
-                ref = a->ref();
-            } else {
-                ref = lookup(a->n, true);
+        case Type::var:
+            if(!s->deref(a, true)) {
+                return nullptr;
             }
-            if(ref == nullptr) {
-                if(a->name.size() > 0) {
-                    set_error(std::string("Unbound variable, ") + a->name);
-                } else {
-                    set_error("Unbound variable.");
-                }
-                return true;
-            } else {
-                ++ref->nref;
+            if(a->t == Type::var && bindType(s->ref->t)) {
+                s->set_error("var refers to a binding for types.");
             }
-            if(a->t == Type::var && bindType(ref->t)) {
-                set_error("RHS of var is a type.");
-                return true;
-            }
+            s->ref->nref++;
             break;
-        case Type::Var:    // type variables, X
-            set_error("Encountered a type variable, but expected a term.");
-            return true;
+        case Type::Var:
+            s->set_error("Encountered a type variable, but expected a term.");
+            break;
         case Type::Top:    // largest type
-            break;
         case Type::top:     // member of Top
-            break;
-        case Type::Fn:
-        case Type::ForAll:
-            break;
-        case Type::fn: {    // functions, fn(x:A) b
-            Stack *rhs = app;
-            if(app != nullptr) {
-                app = rhs->next;
-            }
-            ctxt = new Bind(ctxt, Type::fn, a->name,
-                        new Stack(this, a->child[0], true), rhs);
-            a = a->child[1];
-            continue;
-            }
-        case Type::fnT: {   // polymorphic function, fn(X<:A)b
-            Stack *rhs = app;
-            if(app != nullptr) {
-                app = rhs->next;
-            }
-            ctxt = new Bind(ctxt, Type::fnT, a->name,
-                        new Stack(this, a->child[0], true), rhs);
-            a = a->child[1];
-            continue;
-            }
-        case Type::app:     // application, b(a)
-            app = new Stack(this, a->child[1], false, app);
-            a = a->child[0];
-            continue;
-        case Type::appT:          // type application, b(:A)
-            app = new Stack(this, a->child[1], true, app);
-            a = a->child[0];
-            continue;
         case Type::Group:  // grouping, {A}
             break;
         case Type::group:         // grouping, {a}
-            set_error("Group not handled.");
-            return true;
+            s->set_error("Group not handled.");
+            break;
         case Type::error:
-            set_error(a->name);
-            return true;
+            s->set_error(a->name);
+            break;
+        default:
+            fprintf(stderr, "Encountered invalid value in wind (%d).\n", a->t);
+            break;
         }
-        break;
+        //if(s->t != Type::error && isType(s->t)) {
+        if(isType(s->t)) {
+            s->set_error("Expected term, but found a type.");
+        }
+        return nullptr;
     }
-    // type = type of bottom term in Ast.
-    t = a->t;
-    if(isType(t)) {
-        set_error("Expected term, but found a type.");
-        return true;
+    AstP bind(AstP a) {
+        Stack *rhs = s->app;
+        if(s->app) {
+            s->app = rhs->next;
+        }
+        s->ctxt = new Bind(s->ctxt, a->t, a->name,
+                    new Stack(s, a->child[0], true), rhs);
+        return a->child[1];
     }
-    // Is this stack a value? return true (no further processing)
-    // note: the ctxt check is technically not needed, since
-    // any ctxt passing isValue&&app==null is unreachable code.
+    AstP apply(AstP a) {
+        bool isT = a->t == Type::appT; // Is rhs a type?
+        s->app = new Stack(s, a->child[1], isT, s->app);
+        return a->child[0];
+    }
+};
+
+struct windStackType {
+    bool err = false;
+    Stack *s;
+    Stack *args;
+    windStackType(Stack *_s, Stack *app) : s(_s), args(app) {}
+
+    AstP val(AstP a) {
+        switch(a->t) {
+        case Type::Var:    // type variables, X
+            if(!s->deref(a, true)) {
+                return nullptr;
+            }
+            if(!bindType(s->ref->t)) {
+                s->set_error("Var refers to a binding for values.");
+                return nullptr;
+            }
+            if(s->ref->rhs == nullptr) {
+                ++s->ref->nref; // no known substitition for this type var
+            } else {
+                return get_ast(s->ref->rhs); // locally nameless Ast
+            }
+            break;
+        case Type::var:    // variables, x
+            s->set_error("Encountered a term variable, but expected a type.");
+            return nullptr;
+        case Type::group:  // grouping, {a}
+        case Type::Top:    // largest type
+        case Type::top:     // member of Top
+            break;
+        case Type::Group:  // grouping, {A}
+            s->set_error("Group not handled.");
+            return nullptr;
+        case Type::error:
+            s->set_error(a->name);
+            return nullptr;
+        default:
+            fprintf(stderr, "Encountered invalid value in wind (%d).\n", a->t);
+            return nullptr;
+        }
+        // type = type of bottom term in Ast.
+        s->t = a->t;
+        if(s->t != Type::error && !isType(s->t)) {
+            s->set_error("Expected type, but found a term.");
+        }
+        return nullptr;
+    }
+    AstP bind(AstP a) {
+        const char err1[] = "Invalid application of type (A->B).";
+        const char err2[] = "Invalid application of type All(X:<A) B.";
+        Stack *rhs = s->app;
+        if(rhs) {
+            s->set_error(a->t == Type::Fn ? err1 : err2);
+            return nullptr;
+        }
+
+        switch(a->t) {
+        case Type::Fn:      // function spaces, A->B
+            if(args) {
+                // Verify function type, do not add this binder to the stack.
+                AstP rht = get_type(args);
+                TracebackP tb = subType(rht, a->child[0]);
+                if(tb) {
+                    s->set_error("Invalid function argument type: " + tb->name);
+                    return nullptr;
+                }
+                args = args->next;
+            } else {
+                s->ctxt = new Bind(s->ctxt, a->t,
+                                new Stack(s, a->child[0], true), rhs);
+            }
+            break;
+        case Type::ForAll:  // bounded quantification, All(X<:A) B
+            if(args) {
+                // TODO: store app vs. appT in an "application cell"
+                // It's still safe to assume isType is accurate though,
+                // since its checked on Stack::wind{Type}.
+                //
+                // args being a type also means args is fully evaluated
+                // at this point.
+                if(!isType(args->t)) {
+                    s->set_error("fnT applied to non-type");
+                    return nullptr;
+                }
+                AstP rht = get_ast(args);
+                TracebackP tb = subType(rht, a->child[0]);
+                if(tb) {
+                    s->set_error("Argument of fnT does not match expected: "
+                                 + tb->name);
+                    return nullptr;
+                }
+                // Note, this effectively copies the stack.
+                // We *might* be able to move args in-place if
+                // we swapped out a place-holder like Top.
+                // However, further get_ast-s would be incorrect.
+                Stack *rhts = new Stack(s, rht, true);
+                // rhs is known to be a type, bind it as fnT
+                s->ctxt = new Bind(s->ctxt, Type::fnT, a->name,
+                                new Stack(s, a->child[0], true), rhts);
+                args = args->next;
+            } else {
+                s->ctxt = new Bind(s->ctxt, a->t, a->name,
+                                new Stack(s, a->child[0], true), rhs);
+            }
+            break;
+        case Type::fn:
+        case Type::fnT:
+            s->set_error("Invalid fn/fnT inside a type.");
+            break;
+        default:
+            fprintf(stderr, "Encountered invalid bind in wind (%d).\n", a->t);
+            return nullptr;
+        }
+        return a->child[1];
+    }
+    AstP apply(AstP a) {
+        s->set_error("Invalid application of a type.");
+        return nullptr;
+    }
+};
+
+// Is this stack a trivial value?
+// note: the ctxt check is technically not needed, since
+// any ctxt passing isValue&&app==null is unreachable code.
+bool Stack::isTrivial() const {
     return isValue(t) && app == nullptr && ctxt == nullptr;
+}
+
+/** Wind the value `a` onto the stack.
+ *  Only types are evaluated.
+ */
+bool Stack::wind(AstP a) {
+    windStack W(this);
+    ::wind(&W, a);
+    return W.err;
 }
 
 /** Wind the type `a` onto the stack, evaluating completely
  *  to a term.
  *
+ *  If app is non-null, it is treated as a series of
+ *  known function arguments.  In this case,
+ *  the right-hand sides will be typed.
+ *  The stack returned will represent
+ *  the return type of the function application.
+ *
  *  Returns true on success or false if an error
  *  is encountered.
  */
-bool Stack::windType(AstP a) {
-    while(true) {
-        switch(a->t) {
-        case Type::Var:    // type variables, X
-            if(a->isPtr) {
-                ref = a->ref();
-            } else {
-                ref = lookup(a->n, true);
-            }
-            if(ref == nullptr) {
-                if(a->name.size() > 0) {
-                    set_error(std::string("Unbound variable, ") + a->name);
-                } else {
-                    set_error("Unbound type variable.");
-                }
-                return false;
-            }
-            if(!bindType(ref->t)) {
-                set_error("Var refers to a binding construct that does not accept types.");
-                return false;
-            }
-            if(ref->rhs == nullptr) {
-                ++ref->nref; // no known substitition for this type var
-            } else {
-                a = get_ast(ref->rhs); // locally nameless Ast
-                continue;
-            }
-            break;
-        case Type::var:    // variables, x
-            set_error("Encountered a term variable, but expected a type.");
-            return false;
-        case Type::Top:    // largest type
-            break;
-        case Type::top:     // member of Top
-            break;
-        case Type::Fn: {   // function spaces, A->B
-            Stack *rhs = app;
-            if(rhs != nullptr) {
-                set_error("Invalid application of type (A->B).");
-                return false;
-            }
-            ctxt = new Bind(ctxt, Type::Fn,
-                        new Stack(this, a->child[0], true), rhs);
-            a = a->child[1];
-            continue;
-            }
-        case Type::ForAll: {  // bounded quantification, All(X<:A) B
-            Stack *rhs = app;
-            if(rhs != nullptr) {
-                set_error("Invalid application of type All(X:<A) B.");
-                return false;
-            }
-            ctxt = new Bind(ctxt, Type::ForAll, a->name,
-                        new Stack(this, a->child[0], true), rhs);
-            a = a->child[1];
-            continue;
-            }
-        case Type::fn:
-        case Type::fnT:
-        case Type::app:    // application, b(a)
-        case Type::appT:   // type application, b(:A)
-            break;
-        case Type::Group:  // grouping, {A}
-            set_error("Group not handled.");
-            return false;
-        case Type::group:  // grouping, {a}
-            break;
-        case Type::error:
-            set_error(a->name);
+bool Stack::windType(AstP a, Stack *app) {
+    windStackType W(this, app);
+    ::wind(&W, a);
+    if(W.args) { // args remain after
+        set_error("Application of a function to too many args.");
+        W.err = true;
+    }
+    return W.err;
+}
+
+bool Bind::check_rhs() {
+    return true;
+    if(rhs) {
+        AstP A = get_type(rhs);
+        AstP B = get_ast(rht);
+        TracebackP err = subType(A, B);
+        if(err) {
+            rhs->set_error(err->name);
             return false;
         }
-        break;
-    }
-    // type = type of bottom term in Ast.
-    t = a->t;
-    if(!isType(t)) {
-        set_error("Expected type, but found a term.");
-        return false;
     }
     return true;
 }

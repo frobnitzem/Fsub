@@ -11,7 +11,7 @@ struct Bind {
     Type t;
     Bind *next;
     std::string name; // for readability only
-    Stack *rht;
+    Stack *rht; // Note: this could just as easily be an AstP
     Stack *rhs;
     int nref; // number of references to binding
 
@@ -22,13 +22,16 @@ struct Bind {
     // nameless binding with rhs
     Bind(Bind *_next, Type _t, Stack *_rht, Stack *_rhs)
         : t(_t), next(_next)
-        , rht(_rht), rhs(_rhs), nref(0) {}
+        , rht(_rht), rhs(_rhs), nref(0) { check_rhs(); }
+
     // named binding
     Bind(Bind *_next, Type _t, const std::string &_name,
             Stack *_rht, Stack *_rhs)
         : t(_t), next(_next)
         , name(_name)
-        , rht(_rht), rhs(_rhs), nref(0) {}
+        , rht(_rht), rhs(_rhs), nref(0) { check_rhs(); }
+
+    bool check_rhs();
 };
 
 /** Cons cell for an application
@@ -72,15 +75,21 @@ struct Stack {
     Bind *ref;        // TVar / var
     std::string err;  // holding an error message
 
+    // Construct a "blank" stack with nothing on it.
+    Stack(Stack *_parent) : parent(_parent), ctxt(nullptr),
+                            app(nullptr), next(nullptr) {}
     // Creation of a stack "winds up" the Ast.
     Stack(Stack *parent, AstP a, bool isT, Stack *next=nullptr);
     // Used during construction of the stack from an Ast.
     Bind *lookup(int n, bool initial=false);
+    bool deref(AstP a, bool initial);
     Bind *outer_ctxt() const;
-    bool number_var(intptr_t *n, Bind *ref, Stack *parent) const;
+    bool isTrivial() const;
+
+    bool number_var(intptr_t *n, Bind *ref, const Stack *parent) const;
     // Used to wind an Ast onto the head term of the stack.
-    bool wind(AstP a, bool isT);
-    bool windType(AstP a);
+    bool wind(AstP a);
+    bool windType(AstP a, Stack *app = nullptr);
 
     void set_error(const std::string &msg) {
         err = msg;
@@ -106,5 +115,31 @@ void unwind(SFold *f, struct Stack *s) {
         f->bind(c); // ascend binder
     }
 } 
+
+// Multiple wind functions are possible.
+template <typename windFn>
+void wind(windFn *F, AstP a) {
+    while(a != nullptr) {
+        switch(a->t) {
+        case Type::Fn:
+        case Type::ForAll:
+        case Type::fn:
+        case Type::fnT:
+            a = F->bind(a);
+            // usually a->child[1];
+            break;
+        case Type::app:
+        case Type::appT:
+            a = a = F->apply(a);
+            // usually a->child[0];
+            break;
+        case Type::var:
+        case Type::Var:
+        default:
+            a = F->val(a);
+            break;
+        }
+    }
+}
 
 void numberAst(AstP *x, Bind *assoc = nullptr);

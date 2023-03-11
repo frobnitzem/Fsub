@@ -35,49 +35,68 @@ void print_ast(AstP a, int indent) {
         break;
     case Type::Fn:     // function spaces, A->B
         std::cout << "(";
-        print_ast(a->child[0]);
+        print_ast(a->child[0], indent);
         std::cout << ") ->";
-        print_ast(a->child[1]);
+        print_ast(a->child[1], indent);
         break;
     case Type::ForAll:  // bounded quantification, All(X<:A) B
         std::cout << "All(" << a->name << "<: ";
-        print_ast(a->child[0]);
+        print_ast(a->child[0], indent);
         std::cout << ") -> ";
-        print_ast(a->child[1]);
+        print_ast(a->child[1], indent);
         break;
     case Type::fn:      // functions, fn(x:A) b
         std::cout << "fn(" << a->name << ":";
-        print_ast(a->child[0]);
+        print_ast(a->child[0], indent);
         std::cout << ") -> ";
-        print_ast(a->child[1]);
+        print_ast(a->child[1], indent);
         break;
     case Type::fnT:     // polymorphic function, fn(X<:A) b
         std::cout << "fn(" << a->name << "<:";
-        print_ast(a->child[0]);
+        print_ast(a->child[0], indent);
         std::cout << ") -> ";
-        print_ast(a->child[1]);
+        print_ast(a->child[1], indent);
         break;
     case Type::Group:  // grouping, {A}
     case Type::group:   // grouping, {a}
         std::cout << "{";
         print_group(a, indent+4);
         print_indent(indent);
-        std::cout << "}\n";
+        std::cout << "}";
+        print_indent(indent);
         break;
     case Type::top:     // member of Top
         std::cout << "top";
         break;
     case Type::app:     // application, b(a)
-        std::cout << "(";
-        print_ast(a->child[0]);
-        std::cout << ") ";
-        print_ast(a->child[1]);
+        if(a->child[0]->t == Type::fn) {
+            std::cout << "let " << a->name << ":(";
+            print_ast(a->child[0]->child[0], indent+2);
+            std::cout << ") = ";
+            print_ast(a->child[1], indent+2);
+            print_indent(indent); std::cout << "  in ";
+            print_ast(a->child[0]->child[1], indent+4);
+        } else {
+            std::cout << "(";
+            print_ast(a->child[0], indent);
+            std::cout << ") ";
+            print_ast(a->child[1], indent);
+        }
         break;
     case Type::appT:    // type application, b(:A)
-        std::cout << "(";
-        print_ast(a->child[0]);
-        std::cout << "): ";
-        print_ast(a->child[1]);
+         if(a->child[0]->t == Type::fnT) {
+            std::cout << "Let " << a->name << "<:(";
+            print_ast(a->child[0]->child[0], indent+2);
+            std::cout << ") =";
+            print_ast(a->child[1], indent+2);
+            print_indent(indent); std::cout << "  in ";
+            print_ast(a->child[0]->child[1], indent+4);
+        } else {
+            std::cout << "(";
+            print_ast(a->child[0], indent);
+            std::cout << "): ";
+            print_ast(a->child[1], indent);
+        }
         break;
     case Type::error:
         std::cout << "Error(" << a->name << ")";

@@ -8,7 +8,6 @@ struct GetAst {
     Stack *parent;
     GetAst(Stack *_parent) : parent(_parent) { }
 
-    // Type annotations are ignored.
     bool val(Stack *s) {
         ast = std::make_shared<Ast>(s->t);
         switch(s->t) {
@@ -50,10 +49,7 @@ struct GetAst {
      *  remains locally nameless with no change in scoping.
      */
     AstP get_ast_sub(Stack *s) {
-        AstP a = ast;
-        unwind(this, s);
-        std::swap(a, ast);
-        return a;
+        return get_ast(s, parent);
     }
 };
 
@@ -63,7 +59,14 @@ struct GetAst {
  *  pointers to Bind-s.
  */
 AstP get_ast(Stack *s) {
-    struct GetAst h(s->parent);
+    return get_ast(s, s->parent);
+}
+
+/** Create an ast that is nameless for bindings in
+ *  "parent", but uses de-Bruijn indices otherwise.
+ */
+AstP get_ast(Stack *s, Stack *parent) {
+    struct GetAst h(parent);
     unwind(&h, s);
     return h.ast;
 }

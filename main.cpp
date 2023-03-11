@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
     for(; g->t == Type::group || g->t == Type::Group; g=g->child[1]) {
         printf("%s:\n", g->name.c_str());
         process(g->child[0], g->t == Type::Group);
+        //break;
     }
     return 0;
 }
