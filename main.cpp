@@ -15,10 +15,12 @@ void process(AstP a, bool isT) {
 
     std::cout << "Stack:   ";
     print_ast(get_ast(s), 0); std::cout << std::endl;
+    std::cout << "Type:   ";
+    print_ast(get_type(s), 0); std::cout << std::endl;
 
-    eval_need(s);
-    std::cout << "Eval-d:  ";
-    print_ast(get_ast(s), 0); std::cout << std::endl;
+    //eval_need(s);
+    //std::cout << "Eval-d:  ";
+    //print_ast(get_ast(s), 0); std::cout << std::endl;
 
     stack_dtor(s);
 }
@@ -85,7 +87,6 @@ int main(int argc, char *argv[]) {
     for(; g->t == Type::group || g->t == Type::Group; g=g->child[1]) {
         printf("%s:\n", g->name.c_str());
         process(g->child[0], g->t == Type::Group);
-        //break;
     }
     return 0;
 }

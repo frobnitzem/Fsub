@@ -39,14 +39,15 @@ struct EvalNeed {
         return s->isTrivial();
     }
 
-    // calc_state --
-    // fully evaluate nested data structures.
+    // Fully evaluate nested data structures.
+    // Returns true when done, or false
+    // if val needs to be called again.
     bool val(Stack *s) {
         switch(s->t) {
         case Type::Var:
         case Type::var:
             //if(is_open(s) && s->ref->rec) // refuse
-            //    return s;
+            //    return true;
             return need_var(s);
         default: // Top / top / error
             break;
@@ -54,16 +55,14 @@ struct EvalNeed {
         return true;
     }
 
-    // Clunk the binding, evaluating the
-    // right-hand side, or removing
-    // it if unreferenced.
+    // Remove the binding if unused.
     void bind(Bind *c) {
         if(c->rhs == nullptr || c->nref > 0) { // keep
-            if(c->rht != nullptr) {
+            /*if(c->rht != nullptr) {
                 eval_need(c->rht);
             } else {
                 fprintf(stderr, "NULL type found in ctxt!\n");
-            }
+            }*/
         } else { // variable is unused! -- discard Binding c
             if(c->nref < 0) {
                 fprintf(stderr, "%s has %d refs??\n", c->name.c_str(), c->nref);

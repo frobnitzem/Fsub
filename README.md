@@ -101,7 +101,8 @@ things:
 
 # TODO
 
-- [ ] Implement type checking.
+- [X] Implement type checking.
+- [ ] Better diagnostic error messages.
 - [ ] Implement unification for inferring arguments to fnT.
 - [ ] Optimize substitution of values in
       need_var when nref == 1.  In this case, the

@@ -1,10 +1,47 @@
 #include <stdio.h>
 #include <iostream>
+#include <map>
 
 #include "ast.hpp"
 #include "wind.hpp"
 
 TracebackP subType1(AstP A, AstP B);
+
+void replaceVars(AstP a, const std::map<intptr_t,int> &map, int ndown);
+// Replaces pointers with numbers.
+// the map is from [Bind *] to [depth to the term's root]
+struct windReplaceVars {
+    const std::map<intptr_t,int> &map;
+    int ndown;
+    windReplaceVars(const std::map<intptr_t,int> &_map, int _ndown)
+        : map(_map), ndown(_ndown) {}
+
+    AstP val(AstP a) {
+        if(a->isPtr) {
+            auto it = map.find(a->n);
+            if(it != map.end()) {
+                a->isPtr = false;
+                a->n = ndown + it->second;
+            }
+        }
+        return nullptr;
+    }
+    AstP bind(AstP a) {
+        replaceVars(a->child[0], map, ndown);
+        ++ndown;
+        return a->child[1];
+    }
+    AstP apply(AstP a) {
+        replaceVars(a->child[1], map, ndown);
+        return a->child[0];
+    }
+};
+// Replace local variables with de-Bruijn indices
+// Note: this breaks convention and replaces vars in-place.
+void replaceVars(AstP a, const std::map<intptr_t,int> &map, int ndown) {
+    windReplaceVars W(map, ndown);
+    wind(&W, a);
+}
 
 /** check that A is a subtype of B
  *
@@ -15,10 +52,10 @@ TracebackP subType1(AstP A, AstP B);
  *  before entry to this function.
  */
 TracebackP subType(AstP A, AstP B) {
-    std::cout << "Unifying: "; print_ast(A);
-    std::cout << " and: "; print_ast(B);
+    std::cout << "Checking: "; print_ast(A, 7);
+    std::cout << "\n  <: "; print_ast(B, 7);
     std::cout << "\n";
-    TracebackP err = subType(A, B);
+    TracebackP err = subType1(A, B);
     if(err) {
         std::cout << "Error: " << err->name << std::endl;
     }
@@ -26,6 +63,7 @@ TracebackP subType(AstP A, AstP B) {
 }
 
 TracebackP subType1(AstP A, AstP B) {
+    TracebackP err;
     while(B->t != Type::Top) {
         switch(A->t) {
         case Type::Top:
@@ -46,7 +84,8 @@ TracebackP subType1(AstP A, AstP B) {
             if(B->t != A->t) {
                 return mkError("A and B bind variables differently (Fn vs. ForAll).");
             }
-            if(!subType1(B->child[0], A->child[0])) {
+            err = subType1(B->child[0], A->child[0]);
+            if(err) {
                 // A and B have incompatible arguments
                 // A's argument must be "wider" than B's
                 return mkError("A and B have incompatible arguments (B is too narrow).");
@@ -64,8 +103,8 @@ TracebackP subType1(AstP A, AstP B) {
 // SFold
 struct GetType {
     AstP ast;
-    Stack *parent;
-    GetType(Stack *_parent) : parent(_parent) { }
+    int nbind;
+    std::map<intptr_t,int> map;
 
     // Return the type of the head term
     // Note: Relies on type annotations
@@ -76,7 +115,7 @@ struct GetType {
         case Type::var:
             // Here, we rely on Ast-ptrs to number vars in s->ctxt.
             // We'll need to number these later.
-            ast = get_ast(s->ref->rht, s);
+            ast = get_ast(s->ref->rht);
             if(s->app != nullptr) {
                 // Pending applications -- need to check that
                 // ast represents the correct function type
@@ -86,7 +125,7 @@ struct GetType {
                 Stack *ret = new Stack(s);
                 bool err = ret->windType(ast, s->app);
                 // TODO: error checking.
-                ast = get_ast(ret, s);
+                ast = get_ast(ret);
                 // TODO: skip ref-count increment + decrement
                 //       during this operation?
                 stack_dtor(ret);
@@ -124,13 +163,39 @@ struct GetType {
                 fprintf(stderr, "Invalid bind type (%d).\n", (int)c->t);
                 return;
             }
-            // Note: still relying on ptrs to number vars in s->ctxt
+            // Note: These rhs type annotations still rely
+            // on ptrs to number vars within s->ctxt.
             ast = std::make_shared<Ast>(
                         tt, c->name, get_ast(c->rht), ast);
+            map[(intptr_t)c] = nbind++;
         }
     }
     void apply(Stack *b) {
         // ignore (already dealt with)
+    }
+
+    /** Change map from counting binder height above head
+     *  term mapping depth to term's root (current nbind).
+     *
+     *  Then run replaceVars on the current ast.
+     *  
+     *  example final state of the above unwind op:
+     *  nbind = 3
+     *  map = BindC |-> 2
+     *        BindB |-> 1
+     *              [ hypothetical renumber of BindC ]
+     *        BindA |-> 0
+     *
+     *  For the hypothetical renumbering, the
+     *  de-Bruijn index is computed, given
+     *    ndown = current number of binders
+     *    ndown@C = nbind - map[BindC] == 1
+     *    ------------------------, as
+     *    answer = ndown - ndown@C
+     *           = map[BindC] + (ndown-nbind)
+     */
+    void replace() {
+        replaceVars(ast, map, -nbind);
     }
 };
 
@@ -140,7 +205,8 @@ struct GetType {
  *  pointers to Bind-s.
  */
 AstP get_type(Stack *s) {
-    struct GetType h(s->parent);
+    struct GetType h;
     unwind(&h, s);
+    h.replace();
     return h.ast;
 }

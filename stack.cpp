@@ -90,8 +90,11 @@ Bind *Stack::outer_ctxt() const {
         }
     }
     // TODO: replace with std::runtime_error
-    fprintf(stderr, "Stack %p not found in parent %p\n", s, p);
-    return nullptr;
+    //fprintf(stderr, "Stack %p not found in parent %p\n", s, p);
+    //return nullptr;
+    // Assume stack sits at the head position,
+    // but is not yet linked to it's parent.
+    return s->ctxt;
 }
 
 /**
@@ -374,7 +377,9 @@ struct windStackType {
                 Stack *rhts = new Stack(s, rht, true);
                 // rhs is known to be a type, bind it as fnT
                 s->ctxt = new Bind(s->ctxt, Type::fnT, a->name,
-                                new Stack(s, a->child[0], true), rhts);
+                                new Stack(s, a->child[0], true), nullptr);
+                // prevent unification again
+                s->ctxt->rhs = rhts;
                 args = args->next;
             } else {
                 s->ctxt = new Bind(s->ctxt, a->t, a->name,
@@ -436,7 +441,6 @@ bool Stack::windType(AstP a, Stack *app) {
 }
 
 bool Bind::check_rhs() {
-    return true;
     if(rhs) {
         AstP A = get_type(rhs);
         AstP B = get_ast(rht);
