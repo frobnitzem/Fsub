@@ -101,14 +101,15 @@ TracebackP subType1(AstP A, AstP B) {
 }
 
 // SFold
+// TODO: create a new stack (representing the type),
+// create an application AstP to represent the right-hand sides,
+// then windType() onto it to evaluate the type.
 struct GetType {
     AstP ast;
     int nbind;
+    bool err;
     std::map<intptr_t,int> map;
 
-    // Return the type of the head term
-    // Note: Relies on type annotations
-    //       to be completely eval-ed already.
     bool val(Stack *s) {
         switch(s->t) {
         case Type::Var:
@@ -123,8 +124,7 @@ struct GetType {
                 // while resolving type variable references
                 // added by application right-hand sides.
                 Stack *ret = new Stack(s);
-                bool err = ret->windType(ast, s->app);
-                // TODO: error checking.
+                err = ret->windType(ast, s->app);
                 ast = get_ast(ret);
                 // TODO: skip ref-count increment + decrement
                 //       during this operation?

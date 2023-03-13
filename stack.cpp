@@ -89,17 +89,13 @@ Bind *Stack::outer_ctxt() const {
             return c->next;
         }
     }
-    // TODO: replace with std::runtime_error
-    //fprintf(stderr, "Stack %p not found in parent %p\n", s, p);
-    //return nullptr;
-    // Assume stack sits at the head position,
-    // but is not yet linked to it's parent.
-    return s->ctxt;
+    throw std::runtime_error("Stack not found in parent."); // s in p
 }
 
 /**
  * Step through the binding stack until
- * a non-null c is found.  If c == nullptr
+ * a non-null c is found or the `parent'
+ * stack has been reached.  If c == nullptr
  * on return, there are no more bindings.
  *
  * Returns true if `c` is defined (non-null).
@@ -107,19 +103,28 @@ Bind *Stack::outer_ctxt() const {
  * Note: to count binders from a head term,
  * initialize c = s->ctxt before calling this function.
  */
-bool cur_bind(Stack const *&s, Bind const *&c) {
-    while(c == nullptr && s != nullptr) {
+bool cur_bind(Stack const *&s, Bind const *&c, Stack const *parent) {
+    while(c == nullptr && s != parent) {
+        if(s->parent == parent) {
+            s = parent;
+            break;
+        }
         c = s->outer_ctxt();
         s = s->parent;
     }
     return c != nullptr;
 }
-bool cur_bind(Stack *&s, Bind *&c, bool initial=false) {
-    while(c == nullptr && s != nullptr) {
+bool cur_bind(Stack *&s, Bind *&c,
+              Stack *parent, bool initial=false) {
+    while(c == nullptr && s != parent) {
+        if(s->parent == parent) {
+            s = parent;
+            break;
+        }
         if(initial) {
             if(s->parent == nullptr) {
-                c = nullptr;
-                break;
+                throw std::runtime_error("Missing parent in chain.");
+                s = nullptr; c = nullptr; break;
             }
             c = s->parent->ctxt;
         } else {
@@ -145,12 +150,7 @@ bool Stack::number_var(intptr_t *nv, Bind *ref, const Stack *parent) const {
     const Stack *s = this;
     const Bind *c = s->ctxt;
     int n = 0;
-    for(; cur_bind(s, c); ++n, c = c->next) {
-        if(s == parent) { // c is now in the parent stack's scope.
-                          // Pass through pointer directly
-            *nv = (intptr_t)ref; // as a "global" named variable.
-            return true;
-        }
+    for(; cur_bind(s, c, parent); ++n, c = c->next) {
         if(c == ref) {
             *nv = n;
             return false;
@@ -159,6 +159,11 @@ bool Stack::number_var(intptr_t *nv, Bind *ref, const Stack *parent) const {
     if(ref == nullptr) {
         *nv = n;
         return false;
+    }
+    if(s == parent) { // c is now in the parent stack's scope.
+                      // Pass through pointer directly
+        *nv = (intptr_t)ref; // as a "global" named variable.
+        return true;
     }
     *nv = -1; // indicates an error (ref not found in binding stack)
     return false;
@@ -181,7 +186,7 @@ Bind *Stack::lookup(int n, bool initial) {
 
     if(n < 0) return nullptr;
 
-    while(cur_bind(s, c, initial) && --n >= 0) {
+    while(cur_bind(s, c, nullptr, initial) && --n >= 0) {
         c = c->next;
     }
     return c;
@@ -364,8 +369,13 @@ struct windStackType {
                     return nullptr;
                 }
                 AstP rht = get_ast(args);
-                TracebackP tb = subType(rht, a->child[0]);
+                // need to evaluate a->child[0] in order
+                // to resolve bindings added during this windType traversal.
+                Stack *rht_ts = new Stack(s, a->child[0], true);
+                AstP rht_t = get_ast(rht_ts);
+                TracebackP tb = subType(rht, rht_t);
                 if(tb) {
+                    stack_dtor(rht_ts);
                     s->set_error("Argument of fnT does not match expected: "
                                  + tb->name);
                     return nullptr;
@@ -377,7 +387,7 @@ struct windStackType {
                 Stack *rhts = new Stack(s, rht, true);
                 // rhs is known to be a type, bind it as fnT
                 s->ctxt = new Bind(s->ctxt, Type::fnT, a->name,
-                                new Stack(s, a->child[0], true), nullptr);
+                                   rht_ts, nullptr);
                 // prevent unification again
                 s->ctxt->rhs = rhts;
                 args = args->next;
