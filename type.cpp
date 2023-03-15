@@ -3,7 +3,7 @@
 #include <map>
 
 #include "ast.hpp"
-#include "wind.hpp"
+#include "unwind.hpp"
 
 TracebackP subType1(AstP A, AstP B);
 
@@ -125,6 +125,9 @@ struct GetType {
                 // added by application right-hand sides.
                 Stack *ret = new Stack(s);
                 err = ret->windType(ast, s->app);
+                // remove intermediate let-bindings.
+                // alternately, walk ret->ctxt
+                eval_need(ret);
                 ast = get_ast(ret);
                 // TODO: skip ref-count increment + decrement
                 //       during this operation?

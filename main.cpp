@@ -3,7 +3,7 @@
 #include "ast.hpp"
 #include "stack.hpp"
 
-#include "wind.hpp"
+#include "unwind.hpp"
 
 AstP Pair(AstP A, AstP B) {
     AstP C = Var("C");
@@ -13,10 +13,12 @@ AstP Pair(AstP A, AstP B) {
 void process(AstP a, bool isT) {
     Stack *s = new Stack(nullptr, a, isT);
 
-    std::cout << "Stack:   ";
-    print_ast(get_ast(s), 0); std::cout << std::endl;
-    std::cout << "Type:   ";
-    print_ast(get_type(s), 0); std::cout << std::endl;
+    a = get_ast(s);
+    std::cout << "  Stack:   ";
+    print_ast(a, 0); std::cout << std::endl;
+    AstP t = get_type(s);
+    std::cout << "  Type:   ";
+    print_ast(t, 0); std::cout << std::endl;
 
     //eval_need(s);
     //std::cout << "Eval-d:  ";
@@ -85,7 +87,7 @@ int main(int argc, char *argv[]) {
     print_ast(g, 0); std::cout << std::endl;
 
     for(; g->t == Type::group || g->t == Type::Group; g=g->child[1]) {
-        printf("%s:\n", g->name.c_str());
+        printf("========== %s ==========\n", g->name.c_str());
         process(g->child[0], g->t == Type::Group);
     }
     return 0;

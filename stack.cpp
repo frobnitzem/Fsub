@@ -2,7 +2,7 @@
 
 #include "ast.hpp"
 #include "stack.hpp"
-#include "wind.hpp"
+#include "unwind.hpp"
 
 // Resolve a name to a de-Bruijn index.
 static int lookup1(const std::string &name, Bind *assoc) {
