@@ -138,11 +138,11 @@ bool cur_bind(Stack *&s, Bind *&c,
 /** Find the de-Bruijn index of `ref` with respect to the
  *  head term of s.  Inverse of `lookup`.
  *
- *  Note: s->number_var(var, s->outer_ctxt(), nullptr)
+ *  Note: s->number_var(_, s->outer_ctxt(), nullptr)
  *        is the de-Bruijn index of the first variable
  *        outside this stack's local context.
  *
- *        s->number_var(var, nullptr, nullptr)
+ *        s->number_var(_, nullptr, nullptr)
  *        is the total number of binders up to the
  *        root of the term.
  */
@@ -340,61 +340,64 @@ struct windStackType {
             return nullptr;
         }
 
-        switch(a->t) {
-        case Type::Fn:      // function spaces, A->B
-            if(args) {
-                // Verify function type, do not add this binder to the stack.
-                AstP rht = get_type(args);
-                TracebackP tb = subType(rht, a->child[0]);
-                if(tb) {
-                    s->set_error("Invalid function argument type: " + tb->name);
-                    return nullptr;
-                }
-                args = args->next;
-            } else {
-                s->ctxt = new Bind(s->ctxt, a->t,
-                                new Stack(s, a->child[0], true), rhs);
-            }
-            break;
-        case Type::ForAll:  // bounded quantification, All(X<:A) B
-            if(args) {
-                // TODO: store app vs. appT in an "application cell"
-                // It's still safe to assume isType is accurate though,
-                // since its checked on Stack::wind{Type}.
-                //
-                // args being a type also means args is fully evaluated
-                // at this point.
+        if(args) {
+            // TODO: store app vs. appT in an "application cell"
+            // It's still safe to assume isType is accurate though,
+            // since its checked on Stack::wind{Type}.
+            //
+            // Since we are creating binders, args and the current
+            // ast are no longer fully evaluated at this point.
+            //
+            AstP rht;
+            if(a->t == Type::ForAll) {
                 if(!isType(args->t)) {
                     s->set_error("fnT applied to non-type");
                     return nullptr;
                 }
-                AstP rht = get_ast(args);
-                // need to evaluate a->child[0] in order
-                // to resolve bindings added during this windType traversal.
-                Stack *rht_ts = new Stack(s, a->child[0], true);
-                AstP rht_t = get_ast(rht_ts);
-                TracebackP tb = subType(rht, rht_t);
-                if(tb) {
-                    stack_dtor(rht_ts);
-                    s->set_error("Argument of fnT does not match expected: "
-                                 + tb->name);
+                rht = get_ast(args);
+            } else if(a->t == Type::Fn) {
+                if(isType(args->t)) {
+                    s->set_error("fn applied to type");
                     return nullptr;
                 }
-                // Note, this effectively copies the stack.
-                // We *might* be able to move args in-place if
-                // we swapped out a place-holder like Top.
-                // However, further get_ast-s would be incorrect.
-                Stack *rhts = new Stack(s, rht, true);
-                // rhs is known to be a type, bind it as fnT
-                s->ctxt = new Bind(s->ctxt, Type::fnT, a->name,
-                                   rht_ts, nullptr);
-                // prevent unification again
-                s->ctxt->rhs = rhts;
-                args = args->next;
+                rht = get_type(args);
             } else {
-                s->ctxt = new Bind(s->ctxt, a->t, a->name,
-                                new Stack(s, a->child[0], true), rhs);
+                s->set_error("Unexpected regular function in type.");
+                return nullptr;
             }
+            // Need to evaluate a->child[0] in order
+            // to resolve bindings added during this windType traversal.
+            // TODO: use fewer wind/unwind steps.
+            Stack *rht_ts = new Stack(s, a->child[0], true);
+            AstP rht_t = get_ast(rht_ts);
+            TracebackP tb = subType(rht, rht_t);
+            if(tb) {
+                stack_dtor(rht_ts);
+                s->set_error("Invalid function argument type: " + tb->name);
+                return nullptr;
+            }
+            // Note, this effectively copies the stack.
+            // We *might* be able to move args in-place if
+            // we swapped out a place-holder like Top.
+            // However, further get_ast-s would be incorrect.
+            Stack *rhts = new Stack(s, rht, true);
+            // rhs is known to be a type, bind it as fnT
+            s->ctxt = new Bind(s->ctxt, Type::fnT, a->name,
+                               rht_ts, nullptr);
+            // prevent unification again
+            s->ctxt->rhs = rhts;
+            args = args->next;
+            return a->child[1];
+        }
+
+        switch(a->t) {
+        case Type::Fn:      // function spaces, A->B
+            s->ctxt = new Bind(s->ctxt, a->t,
+                            new Stack(s, a->child[0], true), rhs);
+            break;
+        case Type::ForAll:  // bounded quantification, All(X<:A) B
+            s->ctxt = new Bind(s->ctxt, a->t, a->name,
+                            new Stack(s, a->child[0], true), rhs);
             break;
         case Type::fn:
         case Type::fnT:

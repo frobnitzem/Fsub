@@ -106,7 +106,7 @@ TracebackP subType1(AstP A, AstP B) {
 // then windType() onto it to evaluate the type.
 struct GetType {
     AstP ast;
-    int nbind;
+    int nbind = 0;
     bool err;
     std::map<intptr_t,int> map;
 
