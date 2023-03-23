@@ -15,9 +15,6 @@ struct GetAst {
         case Type::var: // re-number variable ref-s
             ast->isPtr = s->number_var(&ast->n, s->ref, parent);
             break;
-        case Type::error:
-            ast->name = s->err;
-            break;
         case Type::top:
         case Type::Top:
             break;
@@ -81,7 +78,8 @@ struct StackDtor {
         switch(s->t) {
         case Type::Var:
         case Type::var:
-            --s->ref->nref;
+            if(s->ref)
+                --s->ref->nref;
             break;
         default:
             break;

@@ -11,14 +11,24 @@ AstP Pair(AstP A, AstP B) {
 }
 
 void process(AstP a, bool isT) {
-    Stack *s = new Stack(nullptr, a, isT);
-
+    ErrorList err;
+    Stack *s = new Stack(err, nullptr, a, isT);
     a = get_ast(s);
-    std::cout << "  Stack:   ";
-    print_ast(a, 0); std::cout << std::endl;
-    AstP t = get_type(s);
-    std::cout << "  Type:   ";
-    print_ast(t, 0); std::cout << std::endl;
+
+    if(!err.ok()) {
+        std::cout << err;
+        std::cout << "In:   " << a << std::endl;
+        return;
+    }
+    std::cout << "  Stack:   " << a << std::endl;
+
+    AstP t = get_type(err, s);
+    if(!err.ok()) {
+        std::cout << err;
+        std::cout << "In:   " << a << std::endl;
+        return;
+    }
+    std::cout << "  Type:   " << t << std::endl;
 
     //eval_need(s);
     //std::cout << "Eval-d:  ";
@@ -44,6 +54,9 @@ int main(int argc, char *argv[]) {
     AstP id = fnT("X", T, fn("x", X, x));
     AstP g = Group("Id", Id, top());
     g = group("id", id, g);
+    g = group("err1", app(id, top()), g);
+    g = group("err2", ForAll("A", T, app(appT(id, A), id)), g);
+    g = group("err3", app(appT(id, Id), top()), g);
     g = group("id2", app(appT(id, Id), id), g);
     g = Group("Bool",  Bool, g);
     g = Group("True", ForAll("X", T, Fn(X, Fn(T, X))), g);
@@ -82,9 +95,14 @@ int main(int argc, char *argv[]) {
     g = group("id1x", app(app(appT(once,Id), appT(id,Id)), id), g);
     g = group("id2x", app(app(appT(twice,Id), appT(id,Id)), id), g);
 
-    numberAst(&g);
-    std::cout << "Initial = ";
-    print_ast(g, 0); std::cout << std::endl;
+    ErrorList err;
+    numberAst(err, &g);
+    if(!err.ok()) {
+        std::cout << "Errors in numberAst:";
+        std::cout << err;
+        return 1;
+    }
+    std::cout << "Initial = " << g << std::endl;
 
     for(; g->t == Type::group || g->t == Type::Group; g=g->child[1]) {
         printf("========== %s ==========\n", g->name.c_str());

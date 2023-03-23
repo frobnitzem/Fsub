@@ -31,11 +31,12 @@ struct EvalNeed {
 
         AstP rhs = get_ast(ref->rhs); // locally nameless Ast
         --ref->nref;
-        if(bindType(ref->t)) {
-            s->windType(rhs);
+        ErrorList E; // FIXME: these should not throw in a properly typed term
+        if(bindType(ref->t)) { // note: this is a non-term
+            s->windType(E, rhs);
             return true;
         }
-        s->wind(rhs);
+        s->wind(E, rhs);
         return s->isTrivial();
     }
 

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <memory>
+#include <iostream>
 
 // We use pointers to struct Bind to implement locally nameless
 // Ast-s, which are short-lived intermediate data structures.
@@ -24,8 +25,7 @@ enum class Type {
     app,     // application, a(b) // note: reversed from FSubImpl
     fnT,     // polymorphic function, fn(X<:A)b
     appT,    // type application, a(:B) // note: reversed from FSubImpl
-    group,   // grouping, {a}
-    error
+    group    // grouping, {a}
 };
 
 
@@ -34,6 +34,8 @@ struct Ast {
     bool isPtr = false; // whether ref() is active [true] or n [false]
     std::string name; // informational only - for named variables
     intptr_t n = -1;  // de-Bruijn index for variables
+    Traceback *err = nullptr; ///< Weak-ref. to error, only used
+                              // for cross-reference - do not deref.
     Bind *ref() {
         return reinterpret_cast<Bind *>(n);
     }
@@ -51,6 +53,13 @@ struct Ast {
             AstP c0)         : t(_t), name(_name), child{c0,nullptr} {}
     Ast(Type _t, const std::string& _name,
             AstP c0, AstP c1) : t(_t), name(_name), child{c0,c1} {}
+    TracebackP set_err(const std::string &name) {
+        TracebackP tb = std::make_unique<Traceback>([=](std::ostream& os) {
+                        os << name << std::endl;
+                    });
+        err = tb.get();
+        return tb;
+    }
 };
 
 inline AstP Var(const std::string& name) {
@@ -94,9 +103,6 @@ inline AstP group(const std::string& name, AstP a, AstP b) {
 }
 inline AstP Group(const std::string& name, AstP a, AstP b) {
     return std::make_shared<Ast>(Type::Group, name, a, b);
-}
-inline AstP error(const std::string& name) {
-    return std::make_shared<Ast>(Type::error, name);
 }
 /*  Var=1,   // type variables, X
     Top,     // largest type
@@ -158,7 +164,11 @@ static constexpr int getNChild(Type t) {
 }
 
 // pprint.cpp
-void print_ast(AstP a, int indent=0);
+void print_ast(std::ostream &os, AstP a, int indent=0);
+inline std::ostream& operator <<(std::ostream& os, const AstP& a) {
+    print_ast(os, a, 0);
+    return os;
+}
 
 // type.cpp
 TracebackP subType(AstP A, AstP B);

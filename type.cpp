@@ -52,18 +52,14 @@ void replaceVars(AstP a, const std::map<intptr_t,int> &map, int ndown) {
  *  before entry to this function.
  */
 TracebackP subType(AstP A, AstP B) {
-    std::cout << "Checking: "; print_ast(A, 7);
-    std::cout << "\n  <: "; print_ast(B, 7);
-    std::cout << "\n";
-    TracebackP err = subType1(A, B);
-    if(err) {
-        std::cout << "Error: " << err->name << std::endl;
-    }
-    return err;
+    return mkTB([=](std::ostream& os) {
+                os << "While checking: "; print_ast(os, A, 7);
+                os << "\n  <: "; print_ast(os, B, 7);
+                os << "\n";
+           }, subType1(A, B));
 }
 
 TracebackP subType1(AstP A, AstP B) {
-    TracebackP err;
     while(B->t != Type::Top) {
         switch(A->t) {
         case Type::Top:
@@ -84,12 +80,15 @@ TracebackP subType1(AstP A, AstP B) {
             if(B->t != A->t) {
                 return mkError("A and B bind variables differently (Fn vs. ForAll).");
             }
-            err = subType1(B->child[0], A->child[0]);
-            if(err) {
+            {
+              TracebackP err = subType1(B->child[0], A->child[0]);
+              if(err) {
                 // A and B have incompatible arguments
                 // A's argument must be "wider" than B's
-                return mkError("A and B have incompatible arguments (B is too narrow).");
-            }
+                return mkTB([](std::ostream &os) {
+                            os << "Two functions have incompatible arguments (function passed as input is too restrictive).\n";
+                         }, std::move(err));
+            } }
             A = A->child[1];
             B = B->child[1];
             continue;
@@ -107,8 +106,10 @@ TracebackP subType1(AstP A, AstP B) {
 struct GetType {
     AstP ast;
     int nbind = 0;
-    bool err;
+    ErrorList &err;
     std::map<intptr_t,int> map;
+
+    GetType(ErrorList &e) : err(e) {}
 
     bool val(Stack *s) {
         switch(s->t) {
@@ -124,7 +125,7 @@ struct GetType {
                 // while resolving type variable references
                 // added by application right-hand sides.
                 Stack *ret = new Stack(s);
-                err = ret->windType(ast, s->app);
+                ret->windType(err, ast, s->app);
                 // remove intermediate let-bindings.
                 // alternately, walk ret->ctxt
                 eval_need(ret);
@@ -134,16 +135,13 @@ struct GetType {
                 stack_dtor(ret);
             }
             break;
-        case Type::error:
-            ast = std::make_shared<Ast>(s->t);
-            ast->name = s->err;
-            break;
         case Type::Top:
         case Type::top:
             ast = Top();
             break;
         default:
-            fprintf(stderr, "Invalid stack type: %d\n", (int)s->t);
+            throw std::runtime_error("Invalid stack type.");
+            //fprintf(stderr, "Invalid stack type: %d\n", (int)s->t);
             break;
         }
         return true;
@@ -163,7 +161,8 @@ struct GetType {
                 ast = Top();
                 return;
             default:
-                fprintf(stderr, "Invalid bind type (%d).\n", (int)c->t);
+                throw std::runtime_error("Invalid bind type.");
+                //fprintf(stderr, "Invalid bind type (%d).\n", (int)c->t);
                 return;
             }
             // Note: These rhs type annotations still rely
@@ -207,8 +206,8 @@ struct GetType {
  *  indices.  Variables external to the stack are left as
  *  pointers to Bind-s.
  */
-AstP get_type(Stack *s) {
-    struct GetType h;
+AstP get_type(ErrorList &err, Stack *s) {
+    struct GetType h(err);
     unwind(&h, s);
     h.replace();
     return h.ast;
